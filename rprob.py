@@ -154,6 +154,7 @@ class lookup_adapter:
 
 
 if __name__ == '__main__':
+  # configure lookups
   lc_cache_name = 'lc_cache.pkl'
   mr_cache_name = 'mr_cache.pkl'
   try:
@@ -175,10 +176,7 @@ if __name__ == '__main__':
     )
   caches = [lc_cache, mr_cache]
 
-
-  final_positions = Repertoire()
-  seen_positions = Repertoire()
-  
+  #backup the current pgn
   try:
     os.mkdir('rp_backup')
   except FileExistsError:
@@ -187,6 +185,7 @@ if __name__ == '__main__':
   bk_path = os.path.join('rp_backup', timestamp+sys.argv[1])
   shutil.copy2(sys.argv[1], bk_path)
 
+  # load games from current pgn
   infile = open(sys.argv[1])
   g = chess.pgn.read_game(infile)
   ignore_games = []
@@ -200,6 +199,9 @@ if __name__ == '__main__':
     g = chess.pgn.read_game(infile)
   infile.close()
 
+  # do the thing
+  final_positions = Repertoire()
+  seen_positions = Repertoire()
   positions = []
   for g in loaded_games:
     pos = Rpt_position(g, run_color, final_positions, seen_positions)
@@ -217,6 +219,8 @@ if __name__ == '__main__':
   score_scalar = all_positions[0].score
   for p in all_positions:
     p.score /= score_scalar
+
+  # Write out the results
   if len(sys.argv)>3:
     of_name = sys.argv[3]
   else:
@@ -233,6 +237,7 @@ if __name__ == '__main__':
       print(pos.game, file=ofile)
       print(file=ofile)
 
+  # Cache the db lookups
   lc_cache, mr_cache = caches
   pickle.dump(lc_cache, open(lc_cache_name, 'wb'))
   pickle.dump(mr_cache, open(mr_cache_name, 'wb'))
