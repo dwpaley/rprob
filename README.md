@@ -8,8 +8,11 @@ into the given position?
 
 ## Quick start
 
-Clone this repo, then do:
+Clone this repo, install the Python package `python-chess`, then process an example
+file:
 ```
+$ git clone https://github.com/dwpaley/rprob
+$ pip install python-chess
 $ cd rprob/examples
 $ python ../rprob.py najdorf_w.pgn w najdorf_w_out.pgn
 ```
