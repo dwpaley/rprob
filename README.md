@@ -28,6 +28,8 @@ When you are comfortable with RProb, then start omitting the output file name; t
 the output will overwrite the input. This makes it easy to work efficiently by
 iteratively running RProb, reloading the pgn in Chessbase, and adding further moves.
 
+To process a repertoire for Black, change the `w` on the command line to `b`.
+
 ## Brief intro
 
 - Think of a repertoire as a list of positions with your side to move. In RProb,
