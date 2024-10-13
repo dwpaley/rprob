@@ -21,39 +21,43 @@ class Repertoire:
   - A set of reachable positions (opponent to move). A given move order is
       reachable if every position is in this set.
   """
+
   def __init__(self, color):
     self.next_positions = set()
     self.data = dict()
     self.color = color
+
   def add(self, game):
     pos = Rpt_game(game, self.color)
     if pos.terminated: 
       self.next_positions.add(pos.next_pos_fen)
     fen_final = pos.b_final.fen()
     if fen_final in self.data.keys():
-      self.data[fen_final].append(pos)
+      self.data[fen_final].add(pos)
     else:
       self.data[fen_final] = Rpt_position(pos)
+
   def flattened_games(self):
     result = []
     for k in self.data:
       result.extend(self.data[k].games)
     return result
+
   def augment_positions(self, lookups):
     for game in self.flattened_games():
       if not game.terminated: continue
       for new_game in game.augment(lookups):
         self.add(new_game)
+
   def compute_scores(self, lookups):
     for pos in self.data.values():
       pos.compute_scores(lookups, self.next_positions)
-
 
   def write(self, ofile):
     rpositions = sorted(self.data.values(), key=lambda x:x.score, reverse=True)
     score_scalar = rpositions[0].score
     for i, rpos in enumerate(rpositions):
-      score = rpos.score/score_scalar
+      score = rpos.score / score_scalar
       rgame = rpos.games[0] # this is a Rpt_game
       header = f'z{i:06d}'
       if not rgame.terminated: header += 'x'
@@ -64,19 +68,32 @@ class Repertoire:
       print(file=ofile)
 
 
-
-    
-
 class Rpt_position:
   """
   A position with the user to move. Holds one or more Rpt_games that define the
   possible move orders to reach the position.
   """
-  def __init__(self, game):
-    self.games = [game]
+
+  def raw_pgn(self, rgame):
+    exporter = chess.pgn.StringExporter(
+        headers=False, variations=False, comments=False
+    )
+    return rgame.game.accept(exporter)
+
+  def __init__(self, rgame):
+    self.games = [rgame]
+    self.unique_games = set()
+    self.unique_games.add(self.raw_pgn(rgame))
     self.score = 0
-  def append(self, game):
-    self.games.append(game)
+
+  def add(self, rgame):
+    raw = self.raw_pgn(rgame)
+    if raw in self.unique_games: 
+      return
+    else:
+      self.unique_games.add(raw)
+      self.games.append(rgame)
+
   def compute_scores(self, lookups, next_positions):
     for g in self.games:
       g.compute_score(lookups, next_positions)
@@ -90,6 +107,7 @@ class Rpt_game:
   in two types, terminated or not. Terminated positions have the user's next
   move indicated as a comment on the final position.
   """
+
   def __init__(self, game, color):
     assert color in ['w', 'b']
     if game.mainline():
@@ -130,7 +148,7 @@ class Rpt_game:
           m['uci'] in ['e1h1', 'e1a1', 'e8h8', 'e8a8']:
         m['uci'] = translator[m['uci']]
 
-  def compute_score(self, lookups, rpt=None):
+  def compute_score(self, lookups, rpt):
     if not self.reachable(rpt):
       self.score = 0
       return
@@ -257,24 +275,12 @@ if __name__ == '__main__':
     g = chess.pgn.read_game(infile)
   infile.close()
 
-  # do the thing
+  # compute
   positions = Repertoire(color=sys.argv[2])
   for g in loaded_games:
-    #pos = Rpt_game(g, run_color, final_positions, seen_positions)
-    #positions.append(pos)
     positions.add(g)
   positions.augment_positions(lookups)
   positions.compute_scores(lookups)
-
-#  all_new_positions = []
-#  for pos in positions:
-#    if pos.reachable(final_positions) and pos.terminated:
-#      new_positions = pos.augment(caches, seen_positions)
-#      all_new_positions.extend(new_positions)
-#  all_positions = positions + all_new_positions
-#  for pos in all_positions:
-#    pos.compute_score(caches, final_positions)
-#  all_positions.sort(key=lambda x:x.score, reverse=True)
 
   # Write out the results
   if len(sys.argv)>3:
