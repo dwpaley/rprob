@@ -16,10 +16,10 @@ color_enum = {
 class Repertoire:
   """
   Data structures in the Repertoire:
-  - A dictionary where the key is a position (user to move) and the value is
-      the corresponding Rpt_position.
-  - A set of reachable positions (opponent to move). A given move order is
-      reachable if every position is in this set.
+  - A dictionary where the key is an fen position (user to move) and the value
+      is the corresponding Rpt_position.
+  - A set of positions that result from moves in the repertoire. A given move 
+      order is reachable if every position is in this set.
   """
 
   def __init__(self, color):
@@ -295,7 +295,6 @@ if __name__ == '__main__':
     positions.write(ofile)
 
   # Cache the db lookups
-  lc_cache, mr_cache = lookups
   pickle.dump(lc_cache, open(lc_cache_name, 'wb'))
   pickle.dump(mr_cache, open(mr_cache_name, 'wb'))
 
