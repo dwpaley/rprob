@@ -14,42 +14,102 @@ color_enum = {
 }
 
 class Repertoire:
-  def __init__(self):
-    self.all_positions = set()
-  def add(self, fen):
-    self.all_positions.add(fen)
-  def has(self, fen):
-    return fen in self.all_positions
+  """
+  Data structures in the Repertoire:
+  - A dictionary where the key is a position (user to move) and the value is
+      the corresponding Rpt_position.
+  - A set of reachable positions (opponent to move). A given move order is
+      reachable if every position is in this set.
+  """
+  def __init__(self, color):
+    self.next_positions = set()
+    self.data = dict()
+    self.color = color
+  def add(self, game):
+    pos = Rpt_game(game, self.color)
+    if pos.terminated: 
+      self.next_positions.add(pos.next_pos_fen)
+    fen_final = pos.b_final.fen()
+    if fen_final in self.data.keys():
+      self.data[fen_final].append(pos)
+    else:
+      self.data[fen_final] = Rpt_position(pos)
+  def flattened_games(self):
+    result = []
+    for k in self.data:
+      result.extend(self.data[k].games)
+    return result
+  def augment_positions(self, lookups):
+    for game in self.flattened_games():
+      if not game.terminated: continue
+      for new_game in game.augment(lookups):
+        self.add(new_game)
+  def compute_scores(self, lookups):
+    for pos in self.data.values():
+      pos.compute_scores(lookups, self.next_positions)
 
+
+  def write(self, ofile):
+    rpositions = sorted(self.data.values(), key=lambda x:x.score, reverse=True)
+    score_scalar = rpositions[0].score
+    for i, rpos in enumerate(rpositions):
+      score = rpos.score/score_scalar
+      rgame = rpos.games[0] # this is a Rpt_game
+      header = f'z{i:06d}'
+      if not rgame.terminated: header += 'x'
+      game = rgame.game
+      game.headers['White'] = header
+      game.headers['Black'] = f'{score:.6f}'
+      print(game, file=ofile)
+      print(file=ofile)
+
+
+
+    
 
 class Rpt_position:
-  def __init__(self, game, color, final_positions=None, seen_positions=None):
-    # final_positions have the OTHER side to move. They are used to determine
-    # if a positions is reachable given the current repertoire.
-    # seen_positions have the PLAYER side to move. They are used to avoid 
-    # duplicating positions.
+  """
+  A position with the user to move. Holds one or more Rpt_games that define the
+  possible move orders to reach the position.
+  """
+  def __init__(self, game):
+    self.games = [game]
+    self.score = 0
+  def append(self, game):
+    self.games.append(game)
+  def compute_scores(self, lookups, next_positions):
+    for g in self.games:
+      g.compute_score(lookups, next_positions)
+    self.games.sort(key=lambda x:x.score, reverse=True)
+    self.score = sum(g.score for g in self.games)
+
+
+class Rpt_game:
+  """
+  A Rpt_game is a game with the user to move in the final position. It comes
+  in two types, terminated or not. Terminated positions have the user's next
+  move indicated as a comment on the final position.
+  """
+  def __init__(self, game, color):
     assert color in ['w', 'b']
     if game.mainline():
       m_final = list(game.mainline())[-1]
     else:
       m_final = game
-    # In the final position, the repertoire color is the side to move.
     assert m_final.turn() == color_enum[color]
     b_final = m_final.board()
-    if seen_positions is not None:
-      seen_positions.add(b_final.fen())
     final_comment = m_final.comment
     if final_comment and 'skip' not in final_comment:
       m_next_str = final_comment.split()[0]
       m_next = b_final.parse_san(m_next_str)
       b_temp = copy.deepcopy(b_final)
       b_temp.push(m_next)
-      if final_positions is not None:
-        final_positions.add(b_temp.fen())
       self.terminated = True
+      self.next_pos_fen = b_temp.fen()
     else:
       m_next = None
       self.terminated = False
+      self.next_pos_fen = None
     self.b_final = b_final
     self.m_next = m_next
     self.color = color
@@ -104,7 +164,7 @@ class Rpt_position:
         scores[i] *= single_score
     self.score = sum(scores)/len(scores)
 
-  def augment(self, lookups, seen_positions=None):
+  def augment(self, lookups):
     result = []
     gc = copy.deepcopy(self.game)
     gc.end().comment = ''
@@ -117,14 +177,12 @@ class Rpt_position:
     for m in next_moves:
       gc2 = copy.deepcopy(gc)
       gc2.end().add_main_variation(chess.Move.from_uci(m))
-      new_pos = Rpt_position(gc2, self.color)
-      if seen_positions is not None and \
-          seen_positions.has(new_pos.game.end().board().fen()): continue
-      result.append(new_pos)
-    #import pdb;pdb.set_trace()
+      result.append(gc2)
     return result
 
-  def reachable(self, all_rpt_positions):
+  def reachable(self, next_positions):
+    # The position is reachable if every preceding move is also a repertoire
+    # move.
     if not self.game.mainline():
       return True
     for m in reversed(self.game.mainline()):
@@ -133,7 +191,7 @@ class Rpt_position:
         continue
       if 'TTT' in m.comment:
         return True
-      if not all_rpt_positions.has(b.fen()):
+      if not b.fen() in next_positions:
         return False
     return True
 
@@ -174,7 +232,7 @@ if __name__ == '__main__':
       endpoint='https://explorer.lichess.ovh/masters',
       params={}
     )
-  caches = [lc_cache, mr_cache]
+  lookups = [lc_cache, mr_cache]
 
   #backup the current pgn
   try:
@@ -200,25 +258,23 @@ if __name__ == '__main__':
   infile.close()
 
   # do the thing
-  final_positions = Repertoire()
-  seen_positions = Repertoire()
-  positions = []
+  positions = Repertoire(color=sys.argv[2])
   for g in loaded_games:
-    pos = Rpt_position(g, run_color, final_positions, seen_positions)
-    positions.append(pos)
+    #pos = Rpt_game(g, run_color, final_positions, seen_positions)
+    #positions.append(pos)
+    positions.add(g)
+  positions.augment_positions(lookups)
+  positions.compute_scores(lookups)
 
-  all_new_positions = []
-  for pos in positions:
-    if pos.reachable(final_positions) and pos.terminated:
-      new_positions = pos.augment(caches, seen_positions)
-      all_new_positions.extend(new_positions)
-  all_positions = positions + all_new_positions
-  for pos in all_positions:
-    pos.compute_score(caches, final_positions)
-  all_positions.sort(key=lambda x:x.score, reverse=True)
-  score_scalar = all_positions[0].score
-  for p in all_positions:
-    p.score /= score_scalar
+#  all_new_positions = []
+#  for pos in positions:
+#    if pos.reachable(final_positions) and pos.terminated:
+#      new_positions = pos.augment(caches, seen_positions)
+#      all_new_positions.extend(new_positions)
+#  all_positions = positions + all_new_positions
+#  for pos in all_positions:
+#    pos.compute_score(caches, final_positions)
+#  all_positions.sort(key=lambda x:x.score, reverse=True)
 
   # Write out the results
   if len(sys.argv)>3:
@@ -227,18 +283,13 @@ if __name__ == '__main__':
     of_name = sys.argv[1]
   with open(of_name, 'w') as ofile:
     for g in ignore_games:
+      continue
       print(g, file=ofile)
       print(file=ofile)
-    for i, pos in enumerate(all_positions):
-      header = f'z{i:06d}'
-      if not pos.terminated: header += 'x'
-      pos.game.headers['White'] = header
-      pos.game.headers['Black'] = f'{pos.score:.6f}'
-      print(pos.game, file=ofile)
-      print(file=ofile)
+    positions.write(ofile)
 
   # Cache the db lookups
-  lc_cache, mr_cache = caches
+  lc_cache, mr_cache = lookups
   pickle.dump(lc_cache, open(lc_cache_name, 'wb'))
   pickle.dump(mr_cache, open(mr_cache_name, 'wb'))
 
