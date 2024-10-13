@@ -161,6 +161,16 @@ class Rpt_game:
       move = b.pop()
       if b.turn == color_enum[self.color]:
         continue
+      if 'bonus' in m.comment:
+        bonus = None
+        words = m.comment.split()
+        for w in words:
+          if w.startswith('bonus'):
+            bonus = float(w[5:])
+            break
+        assert bonus is not None, 'something is wrong with the bonus'
+      else:
+        bonus = 1
       for i, l in enumerate(lookups):
         hit = l.get(b.fen())
         self.fix_lichess_uci(hit)
@@ -176,7 +186,7 @@ class Rpt_game:
             selected_hits += db_m['black']
             selected_hits += db_m['draws']
         if total_hits:
-          single_score = selected_hits/total_hits
+          single_score = selected_hits/total_hits * bonus
         else:
           single_score = 0
         scores[i] *= single_score
@@ -289,7 +299,6 @@ if __name__ == '__main__':
     of_name = sys.argv[1]
   with open(of_name, 'w') as ofile:
     for g in ignore_games:
-      continue
       print(g, file=ofile)
       print(file=ofile)
     positions.write(ofile)
@@ -297,11 +306,3 @@ if __name__ == '__main__':
   # Cache the db lookups
   pickle.dump(lc_cache, open(lc_cache_name, 'wb'))
   pickle.dump(mr_cache, open(mr_cache_name, 'wb'))
-
-
-
-
-
-
-
-
