@@ -92,4 +92,8 @@ likelihood.
   Caching these database queries is important. Two files are generated, `lc_cache.pkl`
   and `mr_cache.pkl`. Leave those files alone to avoid making too many API requests.
 
+- Transpositions: If a position can be reached by multiple move orders, it only appears
+  once in the final repertoire. Its likelihood is the sum of the probabilities for all
+  its possible move orders. The position is shown with the most common way to reach it.
+
 
