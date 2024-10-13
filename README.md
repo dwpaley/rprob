@@ -6,6 +6,25 @@ depth-independent, one-sided probability for any position. In other words,
 if you play your repertoire moves, what is the chance that the opponent plays
 into the given position?
 
+## Quick start
+
+Clone this repo, then do:
+```
+$ cd rprob/examples
+$ python ../rprob.py najdorf_w.pgn w najdorf_w_out.pgn
+```
+Load the resulting file `najdorf_w_out.pgn` as a Chessbase database. Sort the
+games by the White column. Some games look like `z000000` and the line ends in
+a comment with a move for White. These are known repertoire positions. Some games
+look like `z000005x` and the line ends in a move for Black. These are unknown 
+positions. When you decide a move for the given position, add it as a comment and
+save the game. On the next run of RProb, the possible followups for Black will be
+added as new unknown positions.
+
+When you are comfortable with RProb, then start omitting the output file name; then
+the output will overwrite the input. This makes it easy to work efficiently by
+iteratively running RProb, reloading the pgn in Chessbase, and adding further moves.
+
 ## Brief intro
 
 - Think of a repertoire as a list of positions with your side to move. In RProb,
