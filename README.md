@@ -1,1 +1,67 @@
-# rprob
+# RProb
+
+Analyze a repertoire, sort the lines by the expected chance of seeing them, and
+identify the positions that are missing. The key concept is computing a
+depth-independent, one-sided probability for any position. In other words,
+if you play your repertoire moves, what is the chance that the opponent plays
+into the given position?
+
+## Brief intro
+
+- Think of a repertoire as a list of positions with your side to move. In RProb,
+  each position is represented by a whole (pgn) game. You can note your intended 
+  repertoire move in the final position as a comment on the last move. If you do
+  so, then RProb will find the likely next moves for the other side. These moves
+  will generate new unknown positions for your repertoire.
+
+- RProb repertoire games are identified by setting the pgn tag 'Event' to 'RP'. 
+  An input file can contain other games, which RProb will ignore and copy to 
+  the top of the output file. Keeping one game called Analysis at the top of 
+  the file is convenient, and you can include master games as well.
+
+- The pgn inputs and outputs are intended to use with Chessbase, although I'm
+  sure other programs work fine. Load the pgn as a database and sort the games
+  by White. The repertoire positions will be sorted by likelihood at the end of
+  the list, below your analysis and master games. Positions with no repertoire
+  move are flagged by an 'x' at the end of the White tag.
+
+- Starting positions for a repertoire: Use a comment 'TTT' to indicate the
+  tabiya for the repertoire. The comment should go on your side's last move
+  preceding the key position. For a Najdorf repertoire for White, the file could
+  contain a game:
+
+1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 {TTT} 5... a6 {Be3}
+
+  After a run of RProb, the file will be populated with additional games giving
+  Black's responses to the English Attack.
+
+- You can put multiple starting positions in one file. A London repertoire for
+  Black could start with two games:
+
+1. d4 d5 {TTT} 2. Bf4 {c5}
+1. d4 d5 2. Nf3 Nf6 {TTT} 3. Bf4 {c5}
+
+- You can omit positions from a repertoire with the word 'skip'. For example,
+  the line 1. Nf3 d5 2. c4 e6 belongs in my Reti file, but after 3. d4 then
+  it belongs in my QGD file instead. Therefore, I include the following game:
+
+{TTT} 1. Nf3 d5 2. c4 e6 3. d4 {skip}
+
+  in my Reti file and that position is sorted to the bottom of the file.
+
+- You can upweight positions with the word 'bonus'. For example, someone at the
+  club plays the Orthoschnapp Gambit, so I want to see those lines but without
+  making a whole file for them. Therefore, in my 'random French bs' file, I
+  include the game:
+
+1. e4 e6 {TTT} 2. c4 d5 3. cxd5 exd5 4. Qb3 {dxe4 bonus10}
+
+  The final comment gives my repertoire move (4...dxe4) and a multiplier of 10x.
+  All the positions following this one will be upweighted by a factor of 10.
+
+- By default, the output file has the same name as the input. For safety, the
+  input file is copied with timestamp into a folder called 'rp_backup'.
+
+
+
+
