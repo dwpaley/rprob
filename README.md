@@ -1,7 +1,7 @@
 # RProb
 
 Analyze a repertoire, sort the lines by the expected chance of seeing them, and
-identify the positions that are missing. The key concept is computing a
+identify the positions that are missing. The key concept is a
 depth-independent, one-sided probability for any position. In other words,
 if you play your repertoire moves, what is the chance that the opponent plays
 into the given position?
@@ -74,7 +74,7 @@ likelihood.
   in my Reti file and that position is sorted to the bottom of the file.
 
 - You can upweight positions with the word 'bonus'. For example, someone at the
-  club plays the Orthoschnapp Gambit, so I want to see those lines but without
+  club plays the Orthoschnapp Gambit, so I want to see those lines, but without
   making a whole file for them. Therefore, in my 'random French bs' file, I
   include the game:
 ```
