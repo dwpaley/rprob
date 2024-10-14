@@ -96,4 +96,10 @@ likelihood.
   once in the final repertoire. Its likelihood is the sum of the probabilities for all
   its possible move orders. The position is shown with the most common way to reach it.
 
+- Deactivated lines: If a position becomes unreachable because you've changed one of
+  the preceding moves, the unreachable lines are kept but sorted to the bottom. For
+  example, if I populate my 1. e4 e5 file with Spanish lines but later remove the move
+  3. Bb5, then there is no way of reaching all the following Spanish positions. They will
+  remain at the bottom of the file and will reappear if I ever switch back to 3. Bb5.
+
 
