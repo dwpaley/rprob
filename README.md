@@ -102,4 +102,8 @@ likelihood.
   3. Bb5, then there is no way of reaching all the following Spanish positions. They will
   remain at the bottom of the file and will reappear if I ever switch back to 3. Bb5.
 
+- Databases: Two databases are queried: the Lichess master database and the Lichess player
+  database excluding bullet and players <2000. The total likelihood uses the simple average
+  of these two sources.
+
 
