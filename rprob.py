@@ -59,11 +59,11 @@ class Repertoire:
     for i, rpos in enumerate(rpositions):
       score = rpos.score / score_scalar
       rgame = rpos.games[0] # this is a Rpt_game
-      header = f'z{i:06d}'
+      header = 'z{:06d}'.format(i)
       if not rgame.terminated: header += 'x'
       game = rgame.game
       game.headers['White'] = header
-      game.headers['Black'] = f'{score:.6f}'
+      game.headers['Black'] = '{:.6f}'.format(score)
       print(game, file=ofile)
       print(file=ofile)
 
