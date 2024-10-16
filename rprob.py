@@ -74,19 +74,20 @@ class Rpt_position:
   possible move orders to reach the position.
   """
 
-  def raw_pgn(self, rgame):
+  def raw_pgn(self, rgame, comments=False):
     exporter = chess.pgn.StringExporter(
-        headers=False, variations=False, comments=False
+        headers=False, variations=False, comments=comments
     )
     return rgame.game.accept(exporter)
 
   def __init__(self, rgame):
-    self.games = [rgame]
+    self.games = []
     self.unique_games = set()
-    self.unique_games.add(self.raw_pgn(rgame))
+    self.add(rgame)
     self.score = 0
 
   def add(self, rgame):
+    if 'skip' in self.raw_pgn(rgame, comments=True): return
     raw = self.raw_pgn(rgame)
     if raw in self.unique_games: 
       return
