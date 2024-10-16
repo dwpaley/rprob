@@ -110,11 +110,12 @@ class Rpt_game:
 
   def __init__(self, game, color):
     assert color in ['w', 'b']
-    if game.mainline():
+    mainline = game.mainline()
+    if list(mainline):
       m_final = list(game.mainline())[-1]
+      assert m_final.turn() == color_enum[color]
     else:
       m_final = game
-    assert m_final.turn() == color_enum[color]
     b_final = m_final.board()
     final_comment = m_final.comment
     if final_comment and 'skip' not in final_comment:
@@ -128,6 +129,8 @@ class Rpt_game:
       m_next = None
       self.terminated = False
       self.next_pos_fen = None
+    if not game.mainline(): #special case for White's first move
+      self.terminated = True
     self.b_final = b_final
     self.m_next = m_next
     self.color = color
@@ -196,7 +199,8 @@ class Rpt_game:
     result = []
     gc = copy.deepcopy(self.game)
     gc.end().comment = ''
-    gc.end().add_main_variation(self.m_next)
+    if self.m_next:
+      gc.end().add_main_variation(self.m_next)
     next_moves = set()
     for l in lookups:
       hit = l.get(gc.end().board().fen())
