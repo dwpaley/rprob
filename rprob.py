@@ -47,8 +47,8 @@ class Repertoire:
     self.data = dict()
     self.color = color
 
-  def add(self, game):
-    pos = Rpt_game(game, self.color)
+  def add(self, game, augmented=False):
+    pos = Rpt_game(game, self.color, augmented=augmented)
     if pos.terminated: 
       self.next_positions.add(pos.next_pos_fen)
     fen_final = pos.b_final.fen()
@@ -67,7 +67,7 @@ class Repertoire:
     for game in self.flattened_games():
       if not game.terminated: continue
       for new_game in game.augment(lookups):
-        self.add(new_game)
+        self.add(new_game, augmented=True)
 
   def compute_scores(self, lookups):
     for pos in self.data.values():
@@ -97,18 +97,32 @@ class Rpt_position:
 
   def __init__(self, rgame):
     self.games = []
-    self.unique_games = set()
     self.add(rgame)
     self.score = 0
 
   def add(self, rgame):
-    if 'skip' in raw_pgn(rgame, comments=True): return
+    """
+    The tricky part is a situation where we have loaded the same move order
+    twice, once labeled 'skip' and once not. This can happen if two files
+    have been aggregated together. If so, we replace the skipped one with the
+    non-skipped.
+    """
     raw = raw_pgn(rgame)
-    if raw in self.unique_games: 
-      return
-    else:
-      self.unique_games.add(raw)
+    seen = False
+    for i, g in enumerate(self.games):
+      if raw == raw_pgn(g):
+        if (
+            'skip' in raw_pgn(g, comments=True)
+            and not 'skip' in raw_pgn(rgame, comments=True)
+            and not rgame.augmented
+        ):
+          self.games[i] = rgame
+          return
+        else:
+          seen = True
+    if not seen:
       self.games.append(rgame)
+
 
   def compute_scores(self, lookups, next_positions):
     for g in self.games:
@@ -124,7 +138,7 @@ class Rpt_game:
   move indicated as a comment on the final position.
   """
 
-  def __init__(self, game, color):
+  def __init__(self, game, color, augmented=False):
     assert color in ['w', 'b']
     mainline = game.mainline()
     if list(mainline):
@@ -152,6 +166,7 @@ class Rpt_game:
     self.color = color
     self.game = game
     self.score = 0
+    self.augmented = augmented
 
 
   def compute_score(self, lookups, rpt):
