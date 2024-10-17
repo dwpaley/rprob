@@ -13,6 +13,26 @@ color_enum = {
     'b': False
 }
 
+def raw_pgn(rgame, comments=False):
+  exporter = chess.pgn.StringExporter(
+      headers=False, variations=False, comments=comments
+  )
+  return rgame.game.accept(exporter)
+
+def fix_lichess_uci(response):
+  translator = {
+      'e1h1': 'e1g1',
+      'e1a1': 'e1c1',
+      'e8h8': 'e8g8',
+      'e8a8': 'e8c8'
+  }
+  db_moves = response['moves']
+  for m in response['moves']:
+    if \
+        m['san'] in ['O-O', 'O-O-O'] and \
+        m['uci'] in ['e1h1', 'e1a1', 'e8h8', 'e8a8']:
+      m['uci'] = translator[m['uci']]
+
 class Repertoire:
   """
   Data structures in the Repertoire:
@@ -74,11 +94,6 @@ class Rpt_position:
   possible move orders to reach the position.
   """
 
-  def raw_pgn(self, rgame, comments=False):
-    exporter = chess.pgn.StringExporter(
-        headers=False, variations=False, comments=comments
-    )
-    return rgame.game.accept(exporter)
 
   def __init__(self, rgame):
     self.games = []
@@ -87,8 +102,8 @@ class Rpt_position:
     self.score = 0
 
   def add(self, rgame):
-    if 'skip' in self.raw_pgn(rgame, comments=True): return
-    raw = self.raw_pgn(rgame)
+    if 'skip' in raw_pgn(rgame, comments=True): return
+    raw = raw_pgn(rgame)
     if raw in self.unique_games: 
       return
     else:
@@ -138,19 +153,6 @@ class Rpt_game:
     self.game = game
     self.score = 0
 
-  def fix_lichess_uci(self, hit):
-    translator = {
-        'e1h1': 'e1g1',
-        'e1a1': 'e1c1',
-        'e8h8': 'e8g8',
-        'e8a8': 'e8c8'
-    }
-    db_moves = hit['moves']
-    for m in hit['moves']:
-      if \
-          m['san'] in ['O-O', 'O-O-O'] and \
-          m['uci'] in ['e1h1', 'e1a1', 'e8h8', 'e8a8']:
-        m['uci'] = translator[m['uci']]
 
   def compute_score(self, lookups, rpt):
     if not self.reachable(rpt):
@@ -177,7 +179,7 @@ class Rpt_game:
         bonus = 1
       for i, l in enumerate(lookups):
         hit = l.get(b.fen())
-        self.fix_lichess_uci(hit)
+        fix_lichess_uci(hit)
         db_moves = hit['moves']
         total_hits = 0
         selected_hits = 0
