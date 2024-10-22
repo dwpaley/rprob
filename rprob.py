@@ -33,6 +33,9 @@ def fix_lichess_uci(response):
         m['uci'] in ['e1h1', 'e1a1', 'e8h8', 'e8a8']:
       m['uci'] = translator[m['uci']]
 
+def fen_simple(fen):
+  return ' '.join(fen.split()[:4])
+
 class Repertoire:
   """
   Data structures in the Repertoire:
@@ -51,7 +54,7 @@ class Repertoire:
     pos = Rpt_game(game, self.color, augmented=augmented)
     if pos.terminated: 
       self.next_positions.add(pos.next_pos_fen)
-    fen_final = pos.b_final.fen()
+    fen_final = fen_simple(pos.b_final.fen())
     if fen_final in self.data.keys():
       self.data[fen_final].add(pos)
     else:
