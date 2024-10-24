@@ -118,6 +118,9 @@ class Rpt_position:
             'skip' in raw_pgn(g, comments=True)
             and not 'skip' in raw_pgn(rgame, comments=True)
             and not rgame.augmented
+        ) or (
+            rgame.terminated
+            and not g.terminated
         ):
           self.games[i] = rgame
           return
