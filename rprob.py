@@ -69,18 +69,33 @@ class Repertoire:
   def augment_positions(self, lookups):
     for game in self.flattened_games():
       if not game.terminated: continue
-      for new_game in game.augment(lookups):
+      new_games = game.augment(lookups)
+      #import pdb;pdb.set_trace()
+      for new_game in new_games:
         self.add(new_game, augmented=True)
 
-  def compute_scores(self, lookups):
+  def get_filter_fens(self, label):
+    result = []
     for pos in self.data.values():
-      pos.compute_scores(lookups, self.next_positions)
+      f = pos.get_filter_fen(label)
+      if f:
+        result.append(f)
+    return result
+
+  def compute_scores(self, lookups, filter_fens=None):
+#    filter_fens = []
+#    for pos in self.data.values():
+#      f = pos.get_filter_fen()
+#      if f:
+#        filter_fens.append(f)
+    for pos in self.data.values():
+      pos.compute_scores(lookups, self.next_positions, filter_fens)
 
   def write(self, ofile):
     rpositions = sorted(self.data.values(), key=lambda x:x.score, reverse=True)
     score_scalar = rpositions[0].score
     for i, rpos in enumerate(rpositions):
-      score = rpos.score / score_scalar
+      score = rpos.score #/ score_scalar
       rgame = rpos.games[0] # this is a Rpt_game
       header = 'z{:06d}'.format(i)
       if not rgame.terminated: header += 'x'
@@ -110,17 +125,19 @@ class Rpt_position:
     have been aggregated together. If so, we replace the skipped one with the
     non-skipped.
     """
+    m_next_str = rgame.m_next_str
     raw = raw_pgn(rgame)
     seen = False
-    for i, g in enumerate(self.games):
-      if raw == raw_pgn(g):
+    for i, g2 in enumerate(self.games):
+      g2.reconcile_terminations(rgame)
+      if raw == raw_pgn(g2):
         if (
-            'skip' in raw_pgn(g, comments=True)
+            'skip' in raw_pgn(g2, comments=True)
             and not 'skip' in raw_pgn(rgame, comments=True)
             and not rgame.augmented
         ) or (
             rgame.terminated
-            and not g.terminated
+            and not g2.terminated
         ):
           self.games[i] = rgame
           return
@@ -130,9 +147,24 @@ class Rpt_position:
       self.games.append(rgame)
 
 
-  def compute_scores(self, lookups, next_positions):
+  def get_filter_fen(self, label):
+    """
+    A variation may be marked 'filter'. If so, return the fen for the final
+    position.
+    """
     for g in self.games:
-      g.compute_score(lookups, next_positions)
+      ml = list(g.game.mainline())
+      if not ml: continue
+      last_move = ml[-1]
+      if label in last_move.comment: 
+        result = last_move.board().fen()
+        return result
+    return None
+
+  def compute_scores(self, lookups, next_positions, filter_fens=None):
+
+    for g in self.games:
+      g.compute_score(lookups, next_positions, filter_fens=filter_fens)
     self.games.sort(key=lambda x:x.score, reverse=True)
     self.score = sum(g.score for g in self.games)
 
@@ -162,6 +194,7 @@ class Rpt_game:
       self.terminated = True
       self.next_pos_fen = b_temp.fen()
     else:
+      m_next_str = None
       m_next = None
       self.terminated = False
       self.next_pos_fen = None
@@ -169,24 +202,55 @@ class Rpt_game:
       self.terminated = True
     self.b_final = b_final
     self.m_next = m_next
+    self.m_next_str = m_next_str
+    self.final_comment = final_comment
     self.color = color
     self.game = game
     self.score = 0
     self.augmented = augmented
 
+  def reconcile_terminations(self, other):
+    if 'skip' in raw_pgn(self, comments=True) or \
+        'skip' in raw_pgn(other, comments=True):
+      return
+    if other.terminated and not self.terminated:
+      self.add_termination(other.final_comment)
+    elif self.terminated and not other.terminated:
+      other.add_termination(self.final_comment)
 
-  def compute_score(self, lookups, rpt):
+  def add_termination(self, final_comment):
+    m_next_str = final_comment.split()[0]
+    b_final = self.b_final
+    m_next = b_final.parse_san(m_next_str)
+    b_temp = copy.deepcopy(b_final)
+    b_temp.push(m_next)
+    self.terminated = True
+    self.next_pos_fen = b_temp.fen()
+    self.m_next = m_next
+    self.m_next_str = m_next_str
+
+    game = self.game
+    m_final = list(game.mainline())[-1]
+    m_final.comment = m_next_str
+
+
+
+  def compute_score(self, lookups, rpt, filter_fens=None):
     if not self.reachable(rpt):
       self.score = 0
       return
     scores = [1] * len(lookups)
+    if filter_fens is None: filter_fens = []
+    keep = not filter_fens
     for m in self.game.mainline():
-      if m.comment == 'skip':
+      if m.board().fen() in filter_fens: keep = True
+      if 'skip' in m.comment:
         self.score = 0
         return
       b = m.board()
       move = b.pop()
       if b.turn == color_enum[self.color]:
+        if '': pass
         continue
       if 'bonus' in m.comment:
         bonus = None
@@ -217,11 +281,15 @@ class Rpt_game:
         else:
           single_score = 0
         scores[i] *= single_score
-    self.score = sum(scores)/len(scores)
+    if keep:
+      self.score = sum(scores)/len(scores)
+    else:
+      self.score = 0
 
   def augment(self, lookups):
     result = []
     gc = copy.deepcopy(self.game)
+    #gc.end().comment = ' '.join(gc.end().comment.split()[1:])
     gc.end().comment = ''
     if self.m_next:
       gc.end().add_main_variation(self.m_next)
@@ -257,9 +325,12 @@ class lookup_adapter:
     self.cache = {}
     self.endpoint = endpoint
     self.params = params
+    self.verbose = False
 
   def get(self, key):
     if key not in self.cache:
+      if self.verbose:
+        print('fetching: ', key)
       rp = {'fen': key}
       rp.update(self.params)
       r = requests.get(self.endpoint, rp)
@@ -288,6 +359,8 @@ if __name__ == '__main__':
       endpoint='https://explorer.lichess.ovh/masters',
       params={}
     )
+  lc_cache.verbose = False
+  mr_cache.verbose = True
   lookups = [lc_cache, mr_cache]
 
   #backup the current pgn
@@ -302,12 +375,12 @@ if __name__ == '__main__':
   # load games from current pgn
   infile = open(sys.argv[1])
   g = chess.pgn.read_game(infile)
-  ignore_games = []
+  non_rpt_games = []
   loaded_games = []
   run_color = sys.argv[2]
   while g:
     if g.headers['Event'] != 'RP':
-      ignore_games.append(g)
+      non_rpt_games.append(g)
     else:
       loaded_games.append(g)
     g = chess.pgn.read_game(infile)
@@ -317,19 +390,53 @@ if __name__ == '__main__':
   positions = Repertoire(color=sys.argv[2])
   for g in loaded_games:
     positions.add(g)
+  #import pdb;pdb.set_trace()
+  if len(sys.argv) >= 4:
+    filter_fens = []
+    for word in sys.argv[3:]:
+      filter_fens.extend(positions.get_filter_fens(word))
+  else:
+    filter_fens = None
   positions.augment_positions(lookups)
-  positions.compute_scores(lookups)
+  positions.compute_scores(lookups, filter_fens=filter_fens)
+
+  # Sort the non-repertoire games
+  match_games = []
+  nonmatch_games = []
+  if filter_fens is not None:
+    for g in non_rpt_games:
+      match = False
+      for m in g.mainline():
+        if m.board().fen() in filter_fens:
+          match = True
+          break
+      if match:
+        match_games.append(g)
+      else:
+        nonmatch_games.append(g)
+
+
+  else:
+    nonmatch_games = non_rpt_games
+
+
+
+
+
 
   # Write out the results
-  if len(sys.argv)>3:
+  if len(sys.argv)>3 and False:
     of_name = sys.argv[3]
   else:
     of_name = sys.argv[1]
   with open(of_name, 'w') as ofile:
-    for g in ignore_games:
+    for g in match_games:
       print(g, file=ofile)
       print(file=ofile)
     positions.write(ofile)
+    for g in nonmatch_games:
+      print(g, file=ofile)
+      print(file=ofile)
 
   # Cache the db lookups
   pickle.dump(lc_cache, open(lc_cache_name, 'wb'))
