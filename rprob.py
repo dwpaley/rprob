@@ -74,23 +74,32 @@ class Repertoire:
       for new_game in new_games:
         self.add(new_game, augmented=True)
 
-  def get_filter_fens(self, label):
+  def get_filters(self, label):
+    """
+    This makes a list [item1,item2,...] where each item is a list [fen1, fen2,
+    ...]; fen1 is the tagged position and fen2,... are the preceding positions
+    with the same side to move. For a given position, we keep it under either
+    of two conditions: (1) it contains fen1 in its mainline; i.e. it follows
+    after the tagged position; or (2) its fen is in [fen2,fen3,...]; i.e. it
+    precedes the tagged position.
+    """
     result = []
     for pos in self.data.values():
-      f = pos.get_filter_fen(label)
+      f = pos.get_filter(label)
       if f:
         result.append(f)
     return result
 
-  def compute_scores(self, lookups, filter_fens=None):
+  def compute_scores(self, lookups, filter_info=None):
     for pos in self.data.values():
-      pos.compute_scores(lookups, self.next_positions, filter_fens)
+      pos.compute_scores(lookups, self.next_positions, filter_info)
 
-  def write(self, ofile):
+  def write(self, ofile, nonzero=False):
     rpositions = sorted(self.data.values(), key=lambda x:x.score, reverse=True)
     score_scalar = rpositions[0].score
     for i, rpos in enumerate(rpositions):
       score = rpos.score / score_scalar
+      if score==0 and nonzero: break
       rgame = rpos.games[0] # this is a Rpt_game
       header = 'z{:06d}'.format(i)
       if not rgame.terminated: header += 'x'
@@ -142,24 +151,27 @@ class Rpt_position:
       self.games.append(rgame)
 
 
-  def get_filter_fen(self, label):
+  def get_filter(self, label):
     """
-    A variation may be marked 'filter'. If so, return the fen for the final
+    A variation may be marked with a label. If so, return the fen for the final
     position.
+    UPDATED: return the fen of the marked positions and all previous ones with
+    the same side to move. The marked position is first in the result.
     """
     for g in self.games:
       ml = list(g.game.mainline())
       if not ml: continue
       last_move = ml[-1]
       if label in last_move.comment: 
-        result = last_move.board().fen()
+        result = [m.board().fen() for m in ml[-1::-2]]
+        #result = last_move.board().fen()
         return result
     return None
 
-  def compute_scores(self, lookups, next_positions, filter_fens=None):
+  def compute_scores(self, lookups, next_positions, filter_info=None):
 
     for g in self.games:
-      g.compute_score(lookups, next_positions, filter_fens=filter_fens)
+      g.compute_score(lookups, next_positions, filter_info=filter_info)
     self.games.sort(key=lambda x:x.score, reverse=True)
     self.score = sum(g.score for g in self.games)
 
@@ -230,15 +242,29 @@ class Rpt_game:
 
 
 
-  def compute_score(self, lookups, rpt, filter_fens=None):
+  def compute_score(self, lookups, rpt, filter_info=None):
     if not self.reachable(rpt):
       self.score = 0
       return
     scores = [1] * len(lookups)
-    if filter_fens is None: filter_fens = []
-    keep = not filter_fens
-    for m in self.game.mainline():
-      if m.board().fen() in filter_fens: keep = True
+    if filter_info is not None:
+      keep = False
+      tagged_positions, previous_positions = filter_info
+    else:
+      keep = True
+      tagged_positions, previous_positions = [],[]
+
+    ml = self.game.mainline()
+    if not ml or list(ml)[-1].board().fen() in previous_positions:
+      if not keep:
+        self.game.headers['RP_parentgame'] = 'True'
+
+    if self.game.headers.get('RP_parentgame') == 'True':
+      self.score = 1e-9
+      return
+
+    for m in ml:
+      if m.board().fen() in tagged_positions: keep = True
       if 'skip' in m.comment:
         self.score = 0
         return
@@ -282,6 +308,8 @@ class Rpt_game:
       self.score = 0
 
   def augment(self, lookups):
+    if self.game.headers.get('RP_parentgame') == 'True':
+      return []
     result = []
     gc = copy.deepcopy(self.game)
     #gc.end().comment = ' '.join(gc.end().comment.split()[1:])
@@ -358,21 +386,33 @@ if __name__ == '__main__':
   mr_cache.verbose = True
   lookups = [lc_cache, mr_cache]
 
+  # sort out the command line
+  infile_name = sys.argv[1]
+  run_color = sys.argv[2]
+  assert run_color in ['b', 'w']
+  outfile_name = infile_name
+  rp_only = False
+  filter_tags = []
+  for word in sys.argv[3:]:
+    if word.endswith('.pgn'):
+      outfile_name = word
+      rp_only = True
+    else:
+      filter_tags.append(word)
   #backup the current pgn
   try:
     os.mkdir('rp_backup')
   except FileExistsError:
     pass
   timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-  bk_path = os.path.join('rp_backup', timestamp+sys.argv[1])
-  shutil.copy2(sys.argv[1], bk_path)
+  bk_path = os.path.join('rp_backup', timestamp+infile_name)
+  shutil.copy2(infile_name, bk_path)
 
   # load games from current pgn
-  infile = open(sys.argv[1])
+  infile = open(infile_name)
   g = chess.pgn.read_game(infile)
   non_rpt_games = []
   loaded_games = []
-  run_color = sys.argv[2]
   while g:
     if g.headers['Event'] != 'RP':
       non_rpt_games.append(g)
@@ -382,28 +422,32 @@ if __name__ == '__main__':
   infile.close()
 
   # compute
-  positions = Repertoire(color=sys.argv[2])
+  positions = Repertoire(color=run_color)
   for g in loaded_games:
     positions.add(g)
-  #import pdb;pdb.set_trace()
-  if len(sys.argv) >= 4:
-    filter_fens = []
-    for word in sys.argv[3:]:
-      filter_fens.extend(positions.get_filter_fens(word))
+  tagged_positions, previous_positions = [], []
+  if filter_tags:
+    filters = []
+    for tag in filter_tags:
+      filters.extend(positions.get_filters(tag))
+    for f in filters:
+      tagged_positions.append(f[0])
+      previous_positions.extend(f[1:])
+    filter_info = (tagged_positions, previous_positions)
   else:
-    filter_fens = None
+    filter_info = None
   positions.augment_positions(lookups)
-  positions.compute_scores(lookups, filter_fens=filter_fens)
+  positions.compute_scores(lookups, filter_info=filter_info)
 
   # Sort the non-repertoire games
   match_games = []
   nonmatch_games = []
-  if filter_fens is not None:
+  if tagged_positions:
     for g in non_rpt_games:
       match = False
       for m in g.mainline():
         fen = m.board().fen()
-        if fen in filter_fens:
+        if fen in tagged_positions:
           match = True
           break
       if match:
@@ -421,18 +465,16 @@ if __name__ == '__main__':
 
 
   # Write out the results
-  if len(sys.argv)>3 and False:
-    of_name = sys.argv[3]
-  else:
-    of_name = sys.argv[1]
-  with open(of_name, 'w') as ofile:
-    for g in match_games:
-      print(g, file=ofile, flush=True)
-      print(file=ofile, flush=True)
-    positions.write(ofile)
-    for g in nonmatch_games:
-      print(g, file=ofile, flush=True)
-      print(file=ofile, flush=True)
+  with open(outfile_name, 'w') as ofile:
+    if not rp_only:
+      for g in match_games:
+        print(g, file=ofile, flush=True)
+        print(file=ofile, flush=True)
+    positions.write(ofile, nonzero=rp_only)
+    if not rp_only:
+      for g in nonmatch_games:
+        print(g, file=ofile, flush=True)
+        print(file=ofile, flush=True)
 
   # Cache the db lookups
   pickle.dump(lc_cache, open(lc_cache_name, 'wb'))
