@@ -83,11 +83,6 @@ class Repertoire:
     return result
 
   def compute_scores(self, lookups, filter_fens=None):
-#    filter_fens = []
-#    for pos in self.data.values():
-#      f = pos.get_filter_fen()
-#      if f:
-#        filter_fens.append(f)
     for pos in self.data.values():
       pos.compute_scores(lookups, self.next_positions, filter_fens)
 
@@ -95,15 +90,15 @@ class Repertoire:
     rpositions = sorted(self.data.values(), key=lambda x:x.score, reverse=True)
     score_scalar = rpositions[0].score
     for i, rpos in enumerate(rpositions):
-      score = rpos.score #/ score_scalar
+      score = rpos.score / score_scalar
       rgame = rpos.games[0] # this is a Rpt_game
       header = 'z{:06d}'.format(i)
       if not rgame.terminated: header += 'x'
       game = rgame.game
       game.headers['White'] = header
       game.headers['Black'] = '{:.6f}'.format(score)
-      print(game, file=ofile)
-      print(file=ofile)
+      print(game, file=ofile, flush=True)
+      print(file=ofile, flush=True)
 
 
 class Rpt_position:
@@ -294,8 +289,10 @@ class Rpt_game:
     if self.m_next:
       gc.end().add_main_variation(self.m_next)
     next_moves = set()
-    for l in lookups:
-      hit = l.get(gc.end().board().fen())
+    fen = gc.end().board().fen()
+    for i, l in enumerate(lookups):
+      verbose = i==0
+      hit = l.get(fen, verbose=verbose)
       for m in hit['moves']:
         next_moves.add(m['uci'])
     for m in next_moves:
@@ -325,12 +322,10 @@ class lookup_adapter:
     self.cache = {}
     self.endpoint = endpoint
     self.params = params
-    self.verbose = False
 
-  def get(self, key):
+  def get(self, key, verbose=False):
     if key not in self.cache:
-      if self.verbose:
-        print('fetching: ', key)
+      if verbose: print('fetching: ', key)
       rp = {'fen': key}
       rp.update(self.params)
       r = requests.get(self.endpoint, rp)
@@ -407,7 +402,8 @@ if __name__ == '__main__':
     for g in non_rpt_games:
       match = False
       for m in g.mainline():
-        if m.board().fen() in filter_fens:
+        fen = m.board().fen()
+        if fen in filter_fens:
           match = True
           break
       if match:
@@ -431,12 +427,12 @@ if __name__ == '__main__':
     of_name = sys.argv[1]
   with open(of_name, 'w') as ofile:
     for g in match_games:
-      print(g, file=ofile)
-      print(file=ofile)
+      print(g, file=ofile, flush=True)
+      print(file=ofile, flush=True)
     positions.write(ofile)
     for g in nonmatch_games:
-      print(g, file=ofile)
-      print(file=ofile)
+      print(g, file=ofile, flush=True)
+      print(file=ofile, flush=True)
 
   # Cache the db lookups
   pickle.dump(lc_cache, open(lc_cache_name, 'wb'))
